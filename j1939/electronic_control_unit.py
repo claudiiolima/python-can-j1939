@@ -10,6 +10,7 @@ from .parameter_group_number import ParameterGroupNumber
 from .j1939_21 import J1939_21
 from .j1939_22 import J1939_22
 from .message_id import FrameFormat
+from typing import Dict
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +18,7 @@ class ElectronicControlUnit:
     """ElectronicControlUnit (ECU) holding one or more ControllerApplications (CAs)."""
 
 
-    def __init__(self, data_link_layer='j1939-21', max_cmdt_packets=1, minimum_tp_rts_cts_dt_interval=None, minimum_tp_bam_dt_interval=None, send_message=None):
+    def __init__(self, data_link_layer='j1939-21', max_cmdt_packets=1, minimum_tp_rts_cts_dt_interval=None, minimum_tp_bam_dt_interval=None, send_message=None, priorities:Dict=None):
         """
         :param data_link_layer:
             specify data-link-layer, 'j1939-21' or 'j1939-22'
@@ -32,10 +33,19 @@ class ElectronicControlUnit:
 
         if max_cmdt_packets > 0xFF:
             raise ValueError("max number of segments that can be sent is 0xFF")
+        
+        tp_priorities = {}
 
         # set data link layer
         if data_link_layer == 'j1939-21':
-            self.j1939_dll = J1939_21(self.send_message, self._job_thread_wakeup, self._notify_subscribers, max_cmdt_packets, minimum_tp_rts_cts_dt_interval, minimum_tp_bam_dt_interval, self._is_message_acceptable)
+            tp_priorities['dt_priority']              = priorities['dt_priority']              if priorities is not None and 'dt_priority'              in priorities.keys() else None
+            tp_priorities['abort_priority']           = priorities['abort_priority']           if priorities is not None and 'abort_priority'           in priorities.keys() else None
+            tp_priorities['cts_priority']             = priorities['cts_priority']             if priorities is not None and 'cts_priority'             in priorities.keys() else None
+            tp_priorities['eom_ack_priority']         = priorities['eom_ack_priority']         if priorities is not None and 'eom_ack_priority'         in priorities.keys() else None
+            tp_priorities['acknowledgement_priority'] = priorities['acknowledgement_priority'] if priorities is not None and 'acknowledgement_priority' in priorities.keys() else None
+
+            self.j1939_dll = J1939_21(self.send_message, self._job_thread_wakeup, self._notify_subscribers, max_cmdt_packets, minimum_tp_rts_cts_dt_interval, minimum_tp_bam_dt_interval, self._is_message_acceptable,
+                                      dt_priority=tp_priorities['dt_priority'], abort_priority=tp_priorities['abort_priority'], cts_priority=tp_priorities['cts_priority'], eom_ack_priority=tp_priorities['eom_ack_priority'], acknowledgement_priority=tp_priorities['acknowledgement_priority'])
         elif data_link_layer == 'j1939-22':
             self.j1939_dll = J1939_22(self.send_message, self._job_thread_wakeup, self._notify_subscribers, max_cmdt_packets, minimum_tp_rts_cts_dt_interval, minimum_tp_bam_dt_interval, self._is_message_acceptable)
         else:

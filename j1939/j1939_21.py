@@ -38,7 +38,8 @@ class J1939_21:
         SENDING_BM              = 2 # sending broadcast packages
         TRANSMISSION_FINISHED   = 3 # finished, remove buffer
 
-    def __init__(self, send_message, job_thread_wakeup, notify_subscribers, max_cmdt_packets, minimum_tp_rts_cts_dt_interval, minimum_tp_bam_dt_interval, ecu_is_message_acceptable):
+    def __init__(self, send_message, job_thread_wakeup, notify_subscribers, max_cmdt_packets, minimum_tp_rts_cts_dt_interval, minimum_tp_bam_dt_interval, ecu_is_message_acceptable,
+                 dt_priority=None, abort_priority=None, cts_priority=None, eom_ack_priority=None, acknowledgement_priority=None):
         # Receive buffers
         self._rcv_buffer = {}
         # Send buffers
@@ -51,13 +52,38 @@ class J1939_21:
         self._minimum_tp_rts_cts_dt_interval = minimum_tp_rts_cts_dt_interval
 
         # set minimum time between two tp-bam messages
-        if minimum_tp_bam_dt_interval == None:
+        if minimum_tp_bam_dt_interval is None:
             self._minimum_tp_bam_dt_interval = self.Timeout.Tb
         else:
             self._minimum_tp_bam_dt_interval = minimum_tp_bam_dt_interval
 
         # number of packets that can be sent/received with CMDT (Connection Mode Data Transfer)
         self._max_cmdt_packets = max_cmdt_packets
+        
+        if dt_priority is None:
+            self.tp_dt_priority = 7
+        else:
+            self.tp_dt_priority = dt_priority
+
+        if abort_priority is None:
+            self.tp_abort_priority = 7
+        else:
+            self.tp_abort_priority = abort_priority
+
+        if cts_priority is None:
+            self.tp_cts_priority = 7
+        else:
+            self.tp_cts_priority = cts_priority
+            
+        if eom_ack_priority is None:
+            self.tp_eom_ack_priority = 7
+        else:
+            self.tp_eom_ack_priority = eom_ack_priority
+
+        if acknowledgement_priority is None:
+            self.tp_acknowledgement_priority = 6
+        else:
+            self.tp_acknowledgement_priority = acknowledgement_priority
 
         self.__job_thread_wakeup = job_thread_wakeup
         self.__send_message = send_message
@@ -430,24 +456,24 @@ class J1939_21:
 
     def __send_tp_dt(self, src_address, dest_address, data):
         pgn = ParameterGroupNumber(0, 235, dest_address)
-        mid = MessageId(priority=7, parameter_group_number=pgn.value, source_address=src_address)
+        mid = MessageId(priority=self.tp_dt_priority, parameter_group_number=pgn.value, source_address=src_address)
         self.__send_message(mid.can_id, True, data)
 
     def __send_tp_abort(self, src_address, dest_address, reason, pgn_value):
         pgn = ParameterGroupNumber(0, 236, dest_address)
-        mid = MessageId(priority=7, parameter_group_number=pgn.value, source_address=src_address)
+        mid = MessageId(priority=self.tp_abort_priority, parameter_group_number=pgn.value, source_address=src_address)
         data = [self.ConnectionMode.ABORT, reason, 0xFF, 0xFF, 0xFF, pgn_value & 0xFF, (pgn_value >> 8) & 0xFF, (pgn_value >> 16) & 0xFF]
         self.__send_message(mid.can_id, True, data)
 
     def __send_tp_cts(self, src_address, dest_address, num_packets, next_packet, pgn_value):
         pgn = ParameterGroupNumber(0, 236, dest_address)
-        mid = MessageId(priority=7, parameter_group_number=pgn.value, source_address=src_address)
+        mid = MessageId(priority=self.tp_cts_priority, parameter_group_number=pgn.value, source_address=src_address)
         data = [self.ConnectionMode.CTS, num_packets, next_packet, 0xFF, 0xFF, pgn_value & 0xFF, (pgn_value >> 8) & 0xFF, (pgn_value >> 16) & 0xFF]
         self.__send_message(mid.can_id, True, data)
 
     def __send_tp_eom_ack(self, src_address, dest_address, message_size, num_packets, pgn_value):
         pgn = ParameterGroupNumber(0, 236, dest_address)
-        mid = MessageId(priority=7, parameter_group_number=pgn.value, source_address=src_address)
+        mid = MessageId(priority=self.tp_eom_ack_priority, parameter_group_number=pgn.value, source_address=src_address)
         data = [self.ConnectionMode.EOM_ACK, message_size & 0xFF, (message_size >> 8) & 0xFF, num_packets, 0xFF, pgn_value & 0xFF, (pgn_value >> 8) & 0xFF, (pgn_value >> 16) & 0xFF]
         self.__send_message(mid.can_id, True, data)
 
@@ -459,7 +485,7 @@ class J1939_21:
 
     def __send_acknowledgement(self, control_byte, group_function_value, address_acknowledged, pgn):
         data = [control_byte, group_function_value, 0xFF, 0xFF, address_acknowledged, (pgn & 0xFF), ((pgn >> 8) & 0xFF), ((pgn >> 16) & 0xFF)]
-        mid = MessageId(priority=6, parameter_group_number=0x00E800, source_address=255)
+        mid = MessageId(priority=self.tp_acknowledgement_priority, parameter_group_number=0x00E800, source_address=255)
         self.__send_message(mid.can_id, True, data)
 
     def __send_tp_bam(self, src_address, priority, pgn_value, message_size, num_packets):
